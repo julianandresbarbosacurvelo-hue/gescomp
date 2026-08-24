@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Base — porcelain / ink, ver plan de tokens (Etapa 3) */
+  --background: 60 20% 96.5%;      /* #F7F5F0 porcelain */
+  --foreground: 165 8% 12%;        /* #1F2421 ink */
+
+  --card: 0 0% 100%;               /* #FFFFFF surface */
+  --card-foreground: 165 8% 12%;
+
+  --border: 60 10% 88%;
+  --input: 60 10% 88%;
+
+  --muted: 60 10% 92%;
+  --muted-foreground: 220 9% 46%;  /* #6B7280 ink-muted */
+
+  /* Acento primario: copper — deliberadamente distinto de la terracota D97757 */
+  --primary: 26 71% 40%;           /* #B5651D copper */
+  --primary-foreground: 0 0% 100%;
+
+  /* Acento secundario: deep-teal */
+  --secondary: 180 34% 27%;        /* #2D5C5C deep-teal */
+  --secondary-foreground: 0 0% 100%;
+
+  --accent: 26 71% 96%;            /* copper muy claro, para fondos hover/selección */
+  --accent-foreground: 26 71% 30%;
+
+  --destructive: 0 72% 51%;        /* #DC2626, mismo rojo que status.rojo */
+  --destructive-foreground: 0 0% 100%;
+
+  --ring: 26 71% 40%;
+
+  --radius: 0.5rem;
+}
+
+* { @apply border-border; }
+body {
+  @apply bg-background text-foreground font-sans antialiased;
+  font-variant-numeric: tabular-nums; /* cifras alineadas en tablas/KPI sin esfuerzo extra */
+}
+
+/* Focus visible siempre perceptible — accesibilidad (sección 80 del brief de frontend) */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
