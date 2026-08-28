@@ -56,7 +56,7 @@ export async function getPedidosPorProveedor(establishmentId: string) {
         (d) => d.supplier_id
       )
     )
-  );
+  ) as Record<string, typeof enriched>;
 
   return { bySupplier, withoutSupplier };
 }
