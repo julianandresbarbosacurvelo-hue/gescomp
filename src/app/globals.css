@@ -54,3 +54,9 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+:root {
+  --font-fraunces: 'Fraunces', serif;
+  --font-plex-sans: 'IBM Plex Sans', sans-serif;
+  --font-plex-mono: 'IBM Plex Mono', monospace;
+}
