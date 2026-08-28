@@ -20,7 +20,7 @@ export async function getExpectedForOrder(purchaseOrderId: string) {
 
   if (error) throw new Error(error.message);
 
-  return data.map((item) => {
+    return data.map((item: any) => {
     const receivedSoFar = item.delivery_items.reduce((sum, d) => sum + Number(d.quantity_received), 0);
     return {
       purchase_order_item_id: item.id,
