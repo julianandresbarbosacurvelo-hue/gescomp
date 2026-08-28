@@ -21,9 +21,9 @@ export async function getPedidosPorProveedor(establishmentId: string) {
   if (error) throw new Error(error.message);
   if (!data || data.length === 0) return { bySupplier: {}, withoutSupplier: [] };
 
-  const productIds = [...new Set(data.map((d) => d.product_id).filter(Boolean))];
-  const supplierIds = [...new Set(data.map((d) => d.supplier_id).filter((id) => id !== SIN_PROVEEDOR))];
-  const unitIds = [...new Set(data.map((d) => d.unit_id).filter(Boolean))];
+    const productIds = Array.from(new Set(data.map((d) => d.product_id).filter(Boolean)));
+    const supplierIds = Array.from(new Set(data.map((d) => d.supplier_id).filter((id) => id !== SIN_PROVEEDOR)));
+    const unitIds = Array.from(new Set(data.map((d) => d.unit_id).filter(Boolean)));
 
   const [{ data: products }, { data: suppliers }, { data: units }] = await Promise.all([
     productIds.length ? supabase.from('products').select('id, name, internal_code').in('id', productIds) : Promise.resolve({ data: [] as any[] }),
