@@ -10,7 +10,7 @@ import { ReceivingItem } from '@/components/business/ReceivingItem';
 import { ErrorState } from '@/components/business/ErrorState';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { ReceivingItemState } from './receiving-types';
+import type { ReceivingItemState } from '@/components/business/receiving-types';
 
 export default function RecepcionDetallePage() {
   const { ordenId } = useParams<{ ordenId: string }>();
