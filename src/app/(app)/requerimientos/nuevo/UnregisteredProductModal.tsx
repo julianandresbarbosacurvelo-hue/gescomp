@@ -12,7 +12,7 @@ export function UnregisteredProductModal({
   const [name, setName] = useState('');
   const [unitId, setUnitId] = useState('');
   const [quantity, setQuantity] = useState(1);
-  const { data: units } = useQuery({ queryKey: ['units'], queryFn: listUnits, enabled: open });
+  const { data: units } = useQuery({ queryKey: ['units'], queryFn: () => listUnits(), enabled: open });
 
   if (!open) return null;
 

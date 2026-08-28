@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, ClipboardList, ShoppingCart, FileText, Truck,
   Package, Tags, Building2, Receipt, AlertTriangle, BarChart3,
-  Users, MapPin, Ruler, ScrollText, PlusCircle, Inbox, PackageCheck,
+  Users, MapPin, Ruler, ScrollText, PlusCircle, Inbox, PackageCheck, Building,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -32,6 +32,10 @@ export const SIDEBAR_GROUPS: NavGroup[] = [
       { label: 'Productos', href: '/productos', icon: Package, roles: BUYER_ROLES },
       { label: 'Categorías', href: '/categorias', icon: Tags, roles: BUYER_ROLES },
       { label: 'Proveedores', href: '/proveedores', icon: Building2, roles: BUYER_ROLES },
+      // Movida desde "Administración": RLS de `units` ya permite admin y
+      // coordinador_compras por igual, y conceptualmente encaja mejor junto
+      // al resto del catálogo de abastecimiento que como ítem administrativo.
+      { label: 'Unidades', href: '/admin/unidades', icon: Ruler, roles: BUYER_ROLES },
     ],
   },
   {
@@ -53,7 +57,7 @@ export const SIDEBAR_GROUPS: NavGroup[] = [
     items: [
       { label: 'Usuarios', href: '/admin/usuarios', icon: Users, roles: ['admin'] },
       { label: 'Áreas', href: '/admin/areas', icon: MapPin, roles: ['admin'] },
-      { label: 'Unidades', href: '/admin/unidades', icon: Ruler, roles: ['admin'] },
+      { label: 'Establecimientos', href: '/admin/establecimientos', icon: Building, roles: ['admin'] },
       { label: 'Auditoría', href: '/admin/auditoria', icon: ScrollText, roles: ['admin'] },
     ],
   },

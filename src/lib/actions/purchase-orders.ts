@@ -8,24 +8,54 @@ import { revalidatePath } from 'next/cache';
 const SIN_PROVEEDOR = '00000000-0000-0000-0000-000000000000';
 
 // Pantalla "Pedidos por Proveedor" — agrupa la consolidación de la Fase 9 por proveedor habitual.
+// NOTA TÉCNICA: no se puede "embeber" relaciones (product:products(...)) directamente sobre
+// una vista — PostgREST solo resuelve embeds automáticos usando llaves foráneas reales, y las
+// vistas no tienen. Por eso se trae la vista en crudo y se completan los nombres aparte.
 export async function getPedidosPorProveedor(establishmentId: string) {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from('v_pedidos_por_proveedor')
-    .select(`
-      supplier_id, product_id, unregistered_product_name, total_quantity, has_urgent, breakdown_by_area,
-      product:products(name, internal_code),
-      unit:units(code),
-      supplier:suppliers(trade_name, legal_name)
-    `)
+    .select('supplier_id, product_id, unregistered_product_name, unit_id, total_quantity, has_urgent, breakdown_by_area')
     .eq('establishment_id', establishmentId);
 
   if (error) throw new Error(error.message);
+  if (!data || data.length === 0) return { bySupplier: {}, withoutSupplier: [] };
 
-  const withoutSupplier = data.filter((d) => d.supplier_id === SIN_PROVEEDOR);
-  const bySupplier = Object.groupBy(
-    data.filter((d) => d.supplier_id !== SIN_PROVEEDOR),
-    (d) => d.supplier_id
+  const productIds = [...new Set(data.map((d) => d.product_id).filter(Boolean))];
+  const supplierIds = [...new Set(data.map((d) => d.supplier_id).filter((id) => id !== SIN_PROVEEDOR))];
+  const unitIds = [...new Set(data.map((d) => d.unit_id).filter(Boolean))];
+
+  const [{ data: products }, { data: suppliers }, { data: units }] = await Promise.all([
+    productIds.length ? supabase.from('products').select('id, name, internal_code').in('id', productIds) : Promise.resolve({ data: [] as any[] }),
+    supplierIds.length ? supabase.from('suppliers').select('id, trade_name, legal_name').in('id', supplierIds) : Promise.resolve({ data: [] as any[] }),
+    unitIds.length ? supabase.from('units').select('id, code').in('id', unitIds) : Promise.resolve({ data: [] as any[] }),
+  ]);
+
+  const productMap = new Map((products ?? []).map((p) => [p.id, p]));
+  const supplierMap = new Map((suppliers ?? []).map((s) => [s.id, s]));
+  const unitMap = new Map((units ?? []).map((u) => [u.id, u]));
+
+  const enriched = data.map((d) => ({
+    ...d,
+    product: d.product_id ? productMap.get(d.product_id) ?? null : null,
+    supplier: supplierMap.get(d.supplier_id) ?? null,
+    unit: unitMap.get(d.unit_id) ?? null,
+  }));
+
+  const withoutSupplier = enriched.filter((d) => d.supplier_id === SIN_PROVEEDOR);
+
+  // FIX: Object.groupBy() devuelve un objeto con prototipo nulo (Object.create(null)),
+  // y Next.js rechaza pasar ese tipo de objeto de un Server Component/Action a un
+  // Client Component ("Only plain objects... null prototypes are not supported").
+  // Object.fromEntries(Object.entries(...)) reconstruye el mismo contenido como un
+  // objeto plano normal, serializable.
+  const bySupplier = Object.fromEntries(
+    Object.entries(
+      Object.groupBy(
+        enriched.filter((d) => d.supplier_id !== SIN_PROVEEDOR),
+        (d) => d.supplier_id
+      )
+    )
   );
 
   return { bySupplier, withoutSupplier };
@@ -161,7 +191,8 @@ export async function getPurchaseOrderDetail(id: string) {
       *, supplier:suppliers(*), pdf_attachment:attachments(file_url),
       purchase_order_items(*, product:products(name), unit:units(code),
         purchase_order_item_sources(quantity_allocated,
-          requisition_item:requisition_items(id, quantity, requisition:requisitions(code, area:areas(name)))))
+          requisition_item:requisition_items(id, quantity, requisition:requisitions(code, area:areas(name)))),
+        delivery_items(quantity_received, is_conforming, difference_reason, invoiced_unit_price))
     `)
     .eq('id', id)
     .single();
@@ -181,4 +212,37 @@ export async function getPurchaseOrderTimeline(id: string) {
     .order('changed_at');
   if (error) throw new Error(error.message);
   return data;
+}
+
+// Botón "Cerrar orden" en Detalle de Orden — solo se habilita cuando status='conciliada'
+// (validado también del lado del cliente en page.tsx). El backend valida de nuevo con
+// GET DIAGNOSTICS: si el UPDATE afecta 0 filas (por RLS o estado inválido), lanza un
+// error explícito en vez de fallar en silencio.
+export async function closePurchaseOrder(purchaseOrderId: string) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc('close_purchase_order', {
+    p_purchase_order_id: purchaseOrderId,
+  });
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/compras/ordenes');
+  revalidatePath(`/compras/ordenes/${purchaseOrderId}`);
+}
+
+// Botón "Cancelar orden" en Detalle de Orden — el backend ya bloquea cancelar órdenes
+// recibidas totalmente, conciliadas o cerradas, y libera de vuelta las requisiciones
+// asociadas (status 'en_orden' -> 'enviado') para que puedan volver a consolidarse.
+export async function cancelPurchaseOrder(purchaseOrderId: string, reason: string) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc('cancel_purchase_order', {
+    p_purchase_order_id: purchaseOrderId,
+    p_reason: reason,
+  });
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/compras/ordenes');
+  revalidatePath(`/compras/ordenes/${purchaseOrderId}`);
+  revalidatePath('/compras/bandeja');
 }

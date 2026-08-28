@@ -11,6 +11,9 @@ export async function listCategories() {
     .select('*')
     .order('display_order', { ascending: true, nullsFirst: false });
 
+  console.log('[listCategories] error:', error?.message ?? 'ninguno');
+  console.log('[listCategories] data.length:', data?.length ?? 'null/undefined');
+
   if (error) throw new Error(error.message);
   return data;
 }

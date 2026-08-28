@@ -20,8 +20,8 @@ export default function NuevoProductoPage() {
   const [internalCode, setInternalCode] = useState('');
   const [brand, setBrand] = useState('');
 
-  const categories = useQuery({ queryKey: ['categories'], queryFn: listCategories });
-  const units = useQuery({ queryKey: ['units'], queryFn: listUnits });
+  const categories = useQuery({ queryKey: ['categories'], queryFn: () => listCategories() });
+  const units = useQuery({ queryKey: ['units'], queryFn: () => listUnits() });
 
   const submitMutation = useMutation({
     mutationFn: () => createProduct({ name, category_id: categoryId, unit_id: unitId, internal_code: internalCode || undefined, preferred_brand: brand || undefined, is_active: true }),

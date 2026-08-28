@@ -44,7 +44,7 @@ export default function NewRequisitionPage() {
     enabled: !!establishmentId && !!roleCode,
   });
 
-  const categories = useQuery({ queryKey: ['categories'], queryFn: listCategories });
+  const categories = useQuery({ queryKey: ['categories'], queryFn: () => listCategories() });
 
   const products = useQuery({
     queryKey: search ? ['product-search', debouncedSearch] : ['products-by-category', selectedCategoryId],

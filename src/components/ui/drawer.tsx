@@ -17,9 +17,18 @@ export function Drawer({
 }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; side?: 'right' | 'bottom' }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Enfocar el panel solo quiere pasar UNA VEZ, al abrir — nunca en cada
+  // render. Antes dependía también de `onClose`, y como esa función se
+  // recrea en cada render del padre (ej. cada tecla escrita en un campo
+  // dentro del drawer), el efecto se re-ejecutaba y le robaba el foco al
+  // campo que se estaba escribiendo. Separado en dos efectos para que
+  // solo dependa de `open`.
+  useEffect(() => {
+    if (open) panelRef.current?.focus();
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
-    panelRef.current?.focus();
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }

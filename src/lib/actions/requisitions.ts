@@ -9,7 +9,6 @@ import { revalidatePath } from 'next/cache';
 export async function createRequisition(input: RequisitionInput) {
   const parsed = requisitionSchema.parse(input);
   const supabase = await createServerSupabaseClient();
-
   const { data, error } = await supabase.rpc('create_requisition_with_items', {
     p_establishment_id: parsed.establishment_id,
     p_area_id: parsed.area_id,
@@ -17,11 +16,9 @@ export async function createRequisition(input: RequisitionInput) {
     p_notes: parsed.notes ?? null,
     p_items: parsed.items,
   });
-
   // Si el usuario no tiene rol de esa área en ese establecimiento, RLS rechaza el insert
   // dentro de la función y esto llega como error — no como un requerimiento vacío.
   if (error) throw new Error(error.message);
-
   revalidatePath('/requerimientos/mis-requerimientos');
   return data as string; // id del requerimiento creado
 }
@@ -38,23 +35,24 @@ export async function listMyRequisitions(establishmentId: string) {
     `)
     .eq('establishment_id', establishmentId)
     .order('created_at', { ascending: false });
-
   if (error) throw new Error(error.message);
   return data;
 }
 
+// Pantalla "Detalle de Requerimiento" — se agregó unit:units(code) a los ítems (antes
+// faltaba ese embed aquí, aunque listMyRequisitions ya lo traía) para poder mostrar
+// la unidad de cada producto en el detalle, no solo la cantidad.
 export async function getRequisitionDetail(id: string) {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from('requisitions')
     .select(`
       *, area:areas(name),
-      requisition_items(*, product:products(name)),
+      requisition_items(*, product:products(name), unit:units(code)),
       requester:users!requisitions_requested_by_fkey(full_name)
     `)
     .eq('id', id)
     .single();
-
   if (error) throw new Error(error.message);
   return data;
 }
@@ -72,7 +70,6 @@ export async function getConsolidatedRequisitionItems(establishmentId: string) {
     `)
     .eq('establishment_id', establishmentId)
     .order('has_urgent', { ascending: false });
-
   if (error) throw new Error(error.message);
   return data;
 }

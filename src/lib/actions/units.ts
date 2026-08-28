@@ -9,6 +9,10 @@ import { revalidatePath } from 'next/cache';
 export async function listUnits() {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.from('units').select('*').order('name');
+
+  console.log('[listUnits] error:', error?.message ?? 'ninguno');
+  console.log('[listUnits] data.length:', data?.length ?? 'null/undefined');
+
   if (error) throw new Error(error.message);
   return data;
 }

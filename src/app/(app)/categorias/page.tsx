@@ -7,6 +7,7 @@ import { listCategories, createCategory, deactivateCategory } from '@/lib/action
 import { useToast } from '@/lib/toast-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/business/EmptyState';
+import { ErrorState } from '@/components/business/ErrorState';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,7 @@ export default function CategoriasPage() {
   const queryClient = useQueryClient();
   const [newName, setNewName] = useState('');
 
-  const { data, isLoading } = useQuery({ queryKey: ['categories'], queryFn: listCategories });
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['categories'], queryFn: () => listCategories() });
 
   const createMutation = useMutation({
     mutationFn: () => createCategory({ name: newName, is_active: true }),
@@ -49,7 +50,9 @@ export default function CategoriasPage() {
         </Button>
       </div>
 
-      {isLoading ? (
+      {isError ? (
+        <ErrorState onRetry={() => refetch()} />
+      ) : isLoading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
       ) : !data || data.length === 0 ? (
         <EmptyState icon={Tags} title="Sin categorías" description="Agrega la primera desde el formulario de arriba." />

@@ -1,10 +1,13 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { getProductAnalysis } from '@/lib/actions/analytics';
-import { getProductPriceHistory } from '@/lib/actions/products';
+import { getProductPriceHistory, updateProduct, deactivateProduct, getProduct } from '@/lib/actions/products';
+import { listCategories } from '@/lib/actions/categories';
+import { listUnits } from '@/lib/actions/units';
 import { listSuppliersForProduct, setPreferredSupplier } from '@/lib/actions/suppliers';
 import { listSuppliers } from '@/lib/actions/suppliers';
 import { useEstablishmentStore } from '@/lib/store/establishment';
@@ -12,6 +15,9 @@ import { useToast } from '@/lib/toast-context';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { CurrencyDisplay, DateTimeDisplay } from '@/components/business/DisplayFormatters';
 import { formatPercent } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -21,6 +27,44 @@ export default function ProductDetailPage() {
   const { activeEstablishmentId } = useEstablishmentStore();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [unitId, setUnitId] = useState('');
+  const [brand, setBrand] = useState('');
+  const [internalCode, setInternalCode] = useState('');
+
+  const product = useQuery({ queryKey: ['product', id], queryFn: () => getProduct(id) });
+  const categories = useQuery({ queryKey: ['categories'], queryFn: () => listCategories(), enabled: editing });
+  const units = useQuery({ queryKey: ['units'], queryFn: () => listUnits(), enabled: editing });
+
+  useEffect(() => {
+    if (product.data) {
+      setName(product.data.name ?? '');
+      setCategoryId(product.data.category_id ?? '');
+      setUnitId(product.data.unit_id ?? '');
+      setBrand(product.data.preferred_brand ?? '');
+      setInternalCode(product.data.internal_code ?? '');
+    }
+  }, [product.data]);
+
+  const updateMutation = useMutation({
+    mutationFn: () => updateProduct(id, { name, category_id: categoryId, unit_id: unitId, preferred_brand: brand || undefined, internal_code: internalCode || undefined }),
+    onSuccess: () => {
+      toast('Producto actualizado');
+      setEditing(false);
+      queryClient.invalidateQueries({ queryKey: ['product', id] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (e: Error) => toast(e.message || 'No pudimos actualizar el producto.', 'error'),
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: () => deactivateProduct(id),
+    onSuccess: () => { toast('Producto desactivado'); queryClient.invalidateQueries({ queryKey: ['product', id] }); },
+    onError: (e: Error) => toast(e.message, 'error'),
+  });
 
   const analysis = useQuery({
     queryKey: ['product-analysis', id, activeEstablishmentId],
@@ -37,7 +81,7 @@ export default function ProductDetailPage() {
     queryFn: () => listSuppliersForProduct(id, activeEstablishmentId!),
     enabled: !!activeEstablishmentId,
   });
-  const allSuppliers = useQuery({ queryKey: ['suppliers'], queryFn: listSuppliers });
+  const allSuppliers = useQuery({ queryKey: ['suppliers'], queryFn: () => listSuppliers() });
 
   const setPreferredMutation = useMutation({
     mutationFn: (supplierId: string) => setPreferredSupplier(id, supplierId, activeEstablishmentId!),
@@ -59,12 +103,73 @@ export default function ProductDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-semibold">Ficha del producto</h1>
-        <p className="text-sm text-muted-foreground">
-          {a.proveedor_principal ? `Proveedor principal: ${a.proveedor_principal.proveedor}` : 'Sin historial de compras todavía'}
-        </p>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-semibold">{product.data?.name ?? 'Ficha del producto'}</h1>
+          <p className="text-sm text-muted-foreground">
+            {a.proveedor_principal ? `Proveedor principal: ${a.proveedor_principal.proveedor}` : 'Sin historial de compras todavía'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {product.data && (
+            <Badge variant={product.data.is_active ? 'secondary' : 'outline'}>
+              {product.data.is_active ? 'Activo' : 'Inactivo'}
+            </Badge>
+          )}
+          <Button size="sm" variant="outline" onClick={() => setEditing((e) => !e)}>
+            {editing ? 'Cancelar' : 'Editar producto'}
+          </Button>
+        </div>
       </div>
+
+      {editing && (
+        <Card>
+          <CardHeader><CardTitle>Editar datos del producto</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Nombre</label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Categoría</label>
+                <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full h-10 rounded-md border border-input bg-card px-3 text-sm">
+                  {categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Unidad de compra</label>
+                <select value={unitId} onChange={(e) => setUnitId(e.target.value)} className="w-full h-10 rounded-md border border-input bg-card px-3 text-sm">
+                  {units.data?.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Código interno</label>
+                <Input value={internalCode} onChange={(e) => setInternalCode(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Marca preferida</label>
+                <Input value={brand} onChange={(e) => setBrand(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex items-center justify-between pt-2">
+              <Button disabled={!name.trim() || !categoryId || !unitId || updateMutation.isPending} onClick={() => updateMutation.mutate()}>
+                {updateMutation.isPending ? 'Guardando…' : 'Guardar cambios'}
+              </Button>
+              {product.data?.is_active && (
+                <button
+                  onClick={() => { if (confirm('¿Desactivar este producto? Dejará de aparecer en requerimientos/órdenes nuevas.')) deactivateMutation.mutate(); }}
+                  className="text-sm text-destructive hover:underline"
+                >
+                  Desactivar producto
+                </button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* KPI (sección 47 del brief) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

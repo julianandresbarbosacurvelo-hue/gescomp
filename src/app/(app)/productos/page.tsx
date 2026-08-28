@@ -17,7 +17,7 @@ export default function ProductosPage() {
   const debouncedSearch = useDebouncedValue(search, 300);
   const [categoryId, setCategoryId] = useState('');
 
-  const categories = useQuery({ queryKey: ['categories'], queryFn: listCategories });
+  const categories = useQuery({ queryKey: ['categories'], queryFn: () => listCategories() });
   const { data, isLoading } = useQuery({
     queryKey: ['products', debouncedSearch, categoryId],
     queryFn: () => listProducts({ search: debouncedSearch || undefined, categoryId: categoryId || undefined }),

@@ -54,7 +54,13 @@ export async function listProducts(filters: { categoryId?: string; search?: stri
   return data;
 }
 
-// Historial crudo de precios para la ficha 360° (sección 49 del brief): fecha,
+// Ficha del producto — datos maestros crudos (para el formulario de edición).
+export async function getProduct(id: string) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.from('products').select('*').eq('id', id).single();
+  if (error) throw new Error(error.message);
+  return data;
+}
 // proveedor, cantidad(no aplica aquí, price_history es por evento de precio), precio,
 // variación vs. el registro anterior, orden relacionada.
 export async function getProductPriceHistory(productId: string, establishmentId: string) {

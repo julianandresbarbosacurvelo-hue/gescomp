@@ -19,8 +19,8 @@ export function AnalyticsFilterBar({ establishmentId }: { establishmentId: strin
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: listSuppliers });
-  const categories = useQuery({ queryKey: ['categories'], queryFn: listCategories });
+  const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: () => listSuppliers() });
+  const categories = useQuery({ queryKey: ['categories'], queryFn: () => listCategories() });
   const products = useQuery({ queryKey: ['products'], queryFn: () => listProducts({ activeOnly: true }) });
   const areas = useQuery({ queryKey: ['areas', establishmentId], queryFn: () => listAreas(establishmentId), enabled: !!establishmentId });
 

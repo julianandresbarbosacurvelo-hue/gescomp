@@ -45,6 +45,16 @@ export async function generatePurchaseOrderPdf(order: OrderForPdf): Promise<Uint
   };
   const newLine = (h = 16) => (y -= h);
 
+  // FIX (solapamiento Subtotal/TOTAL): dibuja el texto alineado a la derecha,
+  // midiendo su ancho real con la fuente en vez de calcular posiciones X a mano.
+  // Así el texto nunca invade la columna vecina, sin importar cuán largo sea
+  // ("Subtotal" vs "TOTAL (impuestos incluidos)") ni cuántos dígitos tenga el monto.
+  const drawRightAligned = (text: string, rightX: number, size = 10, useBold = false, color = rgb(0.1, 0.1, 0.1)) => {
+    const activeFont = useBold ? bold : font;
+    const textWidth = activeFont.widthOfTextAtSize(text, size);
+    currentPage.drawText(text, { x: rightX - textWidth, y, size, font: activeFont, color });
+  };
+
   // Encabezado
   draw(order.establishment.name, MARGIN, 16, true);
   newLine(18);
@@ -104,11 +114,22 @@ export async function generatePurchaseOrderPdf(order: OrderForPdf): Promise<Uint
   currentPage.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_WIDTH - MARGIN, y }, thickness: 1, color: rgb(0.85, 0.85, 0.85) });
   newLine(20);
 
-  draw('Subtotal', colX.price, 10, true);
-  draw(formatCOP(order.subtotal), colX.total, 10);
+  // Los montos se alinean a la derecha del margen de la página; las etiquetas
+  // se alinean a la derecha justo antes de donde empieza el monto correspondiente,
+  // con 20px de separación — ambos calculados dinámicamente, nunca a mano.
+  const amountsRightEdge = PAGE_WIDTH - MARGIN;
+  const LABEL_GAP = 20;
+
+  const subtotalText = formatCOP(order.subtotal);
+  drawRightAligned(subtotalText, amountsRightEdge, 10, false);
+  const subtotalLabelRightX = amountsRightEdge - font.widthOfTextAtSize(subtotalText, 10) - LABEL_GAP;
+  drawRightAligned('Subtotal', subtotalLabelRightX, 10, true);
   newLine(16);
-  draw('TOTAL (impuestos incluidos)', colX.price - 60, 11, true);
-  draw(formatCOP(order.total), colX.total, 11, true);
+
+  const totalText = formatCOP(order.total);
+  drawRightAligned(totalText, amountsRightEdge, 11, true);
+  const totalLabelRightX = amountsRightEdge - bold.widthOfTextAtSize(totalText, 11) - LABEL_GAP;
+  drawRightAligned('TOTAL (impuestos incluidos)', totalLabelRightX, 11, true);
 
   if (order.notes) {
     newLine(30);

@@ -11,7 +11,7 @@ import { buttonVariants } from '@/components/ui/button';
 
 export default function ProveedoresPage() {
   const [search, setSearch] = useState('');
-  const { data, isLoading } = useQuery({ queryKey: ['suppliers'], queryFn: listSuppliers });
+  const { data, isLoading } = useQuery({ queryKey: ['suppliers'], queryFn: () => listSuppliers() });
 
   const filtered = useMemo(() => {
     if (!data) return [];

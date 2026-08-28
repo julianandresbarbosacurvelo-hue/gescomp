@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FileDown, XCircle, Lock } from 'lucide-react';
+import { FileDown, XCircle, Lock, AlertTriangle } from 'lucide-react';
 import { getPurchaseOrderDetail, getPurchaseOrderTimeline, closePurchaseOrder, cancelPurchaseOrder } from '@/lib/actions/purchase-orders';
 import { useSession } from '@/lib/session-context';
 import { getActiveRoleCodes } from '@/lib/session-utils';
@@ -81,15 +81,42 @@ export default function OrderDetailPage() {
           <Card>
             <CardHeader><CardTitle>Productos</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              {o.purchase_order_items.map((item: any) => (
-                <div key={item.id} className="flex items-center justify-between border-b border-border py-2 last:border-0">
-                  <div>
-                    <p className="text-sm font-medium">{item.product?.name ?? item.service_description}</p>
-                    <p className="text-xs text-muted-foreground">{item.quantity} {item.unit?.code}</p>
+              {o.purchase_order_items.map((item: any) => {
+                // Un ítem puede tener varias entregas parciales acumuladas; nos interesa
+                // el total recibido y si CUALQUIERA de esas entregas quedó marcada como
+                // no conforme, para mostrar el detalle de la novedad bajo el producto.
+                const deliveries = item.delivery_items ?? [];
+                const totalReceived = deliveries.reduce((sum: number, d: any) => sum + Number(d.quantity_received ?? 0), 0);
+                const nonConforming = deliveries.filter((d: any) => d.is_conforming === false);
+                const hasNovedad = nonConforming.length > 0;
+
+                return (
+                  <div key={item.id} className="border-b border-border py-2 last:border-0">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">{item.product?.name ?? item.service_description}</p>
+                        <p className="text-xs text-muted-foreground">{item.quantity} {item.unit?.code}</p>
+                      </div>
+                      <CurrencyDisplay value={item.line_total} className="text-sm" />
+                    </div>
+
+                    {deliveries.length > 0 && (
+                      <div className={`mt-1.5 flex items-start gap-1.5 text-xs ${hasNovedad ? 'text-status-rojo' : 'text-muted-foreground'}`}>
+                        {hasNovedad && <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden />}
+                        <div>
+                          <span>
+                            Recibido: {totalReceived} de {item.quantity} {item.unit?.code}
+                            {hasNovedad ? ' — con novedad' : ' — conforme'}
+                          </span>
+                          {nonConforming.map((d: any, i: number) => d.difference_reason && (
+                            <p key={i} className="mt-0.5">Motivo: {d.difference_reason}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <CurrencyDisplay value={item.line_total} className="text-sm" />
-                </div>
-              ))}
+                );
+              })}
               <div className="flex items-center justify-between pt-3 font-medium">
                 <span className="text-sm">Total (impuestos incluidos)</span>
                 <CurrencyDisplay value={o.total} className="text-base" />

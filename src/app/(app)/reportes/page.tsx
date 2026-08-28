@@ -25,7 +25,7 @@ export default function ReportesPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
-  const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: listSuppliers });
+  const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: () => listSuppliers() });
 
   const orders = useQuery({
     queryKey: ['purchase-orders', activeEstablishmentId],
