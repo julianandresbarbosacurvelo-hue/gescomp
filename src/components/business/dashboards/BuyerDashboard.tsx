@@ -49,7 +49,7 @@ export function BuyerDashboard({ establishmentId }: { establishmentId: string })
             <p className="text-sm text-muted-foreground">Sin ítems urgentes pendientes.</p>
           ) : (
             <div className="space-y-2">
-              {urgentItems.slice(0, 5).map((item) => (
+              {urgentItems.slice(0, 5).map((item: any) => (
                 <div key={`${item.product_id}-${item.unregistered_product_name}`} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
                   <span className="text-sm">{item.product?.name ?? item.unregistered_product_name}</span>
                   <StatusBadge label="Urgente" color="rojo" />
