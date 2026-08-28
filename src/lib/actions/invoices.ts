@@ -42,7 +42,7 @@ export async function getThreeWayMatchSummary(purchaseOrderId: string) {
 
   if (error) throw new Error(error.message);
 
-  return data.map((item) => {
+    return data.map((item: any) => {
     const received = item.delivery_items.reduce((s, d) => s + Number(d.quantity_received), 0);
     const invoiced = item.invoice_items.reduce((s, i) => s + Number(i.quantity_invoiced), 0);
     return {
