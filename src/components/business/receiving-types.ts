@@ -10,5 +10,6 @@ export type ReceivingItemState = {
     difference_reason?: string;
     showPriceInput: boolean;
     invoiced_unit_price?: number;
+    agreed_unit_price?: number | null;
     photoFile?: File;
 };
