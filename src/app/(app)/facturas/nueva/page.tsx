@@ -12,6 +12,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatCurrencyCOP } from '@/lib/format';
 
 const RECEIVED_STATUSES = ['recibida_parcialmente', 'recibida_totalmente', 'con_novedad'];
 
@@ -120,7 +121,10 @@ export default function NuevaFacturaPage() {
                   <Input
                     type="number"
                     className="w-28"
-                    placeholder="Precio unit."
+                    // Si se deja vacío, se factura al precio acordado en la orden (ver
+                    // submitMutation) — se muestra ese valor en el placeholder para que
+                    // quede claro qué se va a registrar sin necesidad de reescribirlo.
+                    placeholder={item.agreed_unit_price != null ? formatCurrencyCOP(item.agreed_unit_price) : 'Precio unit.'}
                     value={prices[item.id] ?? ''}
                     onChange={(e) => setPrices((p) => ({ ...p, [item.id]: Number(e.target.value) }))}
                   />
