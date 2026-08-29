@@ -25,21 +25,40 @@ export async function getPedidosPorProveedor(establishmentId: string) {
     const supplierIds = Array.from(new Set(data.map((d) => d.supplier_id).filter((id) => id !== SIN_PROVEEDOR)));
     const unitIds = Array.from(new Set(data.map((d) => d.unit_id).filter(Boolean)));
 
-  const [{ data: products }, { data: suppliers }, { data: units }] = await Promise.all([
+  const [{ data: products }, { data: suppliers }, { data: units }, { data: priceRows }] = await Promise.all([
     productIds.length ? supabase.from('products').select('id, name, internal_code').in('id', productIds) : Promise.resolve({ data: [] as any[] }),
     supplierIds.length ? supabase.from('suppliers').select('id, trade_name, legal_name').in('id', supplierIds) : Promise.resolve({ data: [] as any[] }),
     unitIds.length ? supabase.from('units').select('id, code').in('id', unitIds) : Promise.resolve({ data: [] as any[] }),
+    // Último precio confirmado por producto (cualquier proveedor), para prellenar el
+    // "Precio unit." al generar la orden en vez de dejarlo en blanco cada vez — mismo
+    // criterio que getProductPriceSummary usa en Recepción (lastPrice).
+    productIds.length
+      ? supabase
+          .from('price_history')
+          .select('product_id, unit_price, recorded_at')
+          .eq('establishment_id', establishmentId)
+          .in('product_id', productIds)
+          .order('recorded_at', { ascending: false })
+      : Promise.resolve({ data: [] as any[] }),
   ]);
 
   const productMap = new Map((products ?? []).map((p) => [p.id, p]));
   const supplierMap = new Map((suppliers ?? []).map((s) => [s.id, s]));
   const unitMap = new Map((units ?? []).map((u) => [u.id, u]));
 
+  // price_history viene ordenado por recorded_at desc — el primer registro que se
+  // encuentre por product_id ya es el más reciente.
+  const lastPriceMap = new Map<string, number>();
+  for (const row of priceRows ?? []) {
+    if (!lastPriceMap.has(row.product_id)) lastPriceMap.set(row.product_id, Number(row.unit_price));
+  }
+
   const enriched = data.map((d) => ({
     ...d,
     product: d.product_id ? productMap.get(d.product_id) ?? null : null,
     supplier: supplierMap.get(d.supplier_id) ?? null,
     unit: unitMap.get(d.unit_id) ?? null,
+    last_known_price: d.product_id ? lastPriceMap.get(d.product_id) ?? null : null,
   }));
 
   const withoutSupplier = enriched.filter((d) => d.supplier_id === SIN_PROVEEDOR);
