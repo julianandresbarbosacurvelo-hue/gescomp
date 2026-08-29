@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Camera, AlertTriangle } from 'lucide-react';
 import { QuantityInput } from '@/components/business/QuantityInput';
@@ -38,6 +39,18 @@ export function ReceivingItem({
     priceSummary.data?.lastPrice && item.invoiced_unit_price
       ? ((item.invoiced_unit_price - Number(priceSummary.data.lastPrice.unit_price)) / Number(priceSummary.data.lastPrice.unit_price)) * 100
       : null;
+
+  // Antes había que teclear el precio de factura desde cero cada vez, aunque ya se
+  // supiera el precio acordado en la orden. Se sugiere ese valor apenas se abre "Registrar
+  // precio" (nunca antes — sigue siendo opcional, solo si el receptor tiene la factura en
+  // mano), y si no hay precio acordado, se cae al último precio histórico conocido.
+  useEffect(() => {
+    if (item.showPriceInput && item.invoiced_unit_price == null) {
+      const suggested = item.agreed_unit_price ?? priceSummary.data?.lastPrice?.unit_price;
+      if (suggested != null) onChange({ invoiced_unit_price: Number(suggested) });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.showPriceInput, priceSummary.data]);
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-3">
