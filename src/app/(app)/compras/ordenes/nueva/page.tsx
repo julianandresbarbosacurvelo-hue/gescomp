@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { getPedidosPorProveedor, createPurchaseOrder } from '@/lib/actions/purchase-orders';
@@ -12,6 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QuantityInput } from '@/components/business/QuantityInput';
+import { DeviationBadge } from '@/components/business/DeviationBadge';
+import { formatCurrencyCOP } from '@/lib/format';
 
 export default function NuevaOrdenPage() {
   const searchParams = useSearchParams();
@@ -41,6 +43,25 @@ export default function NuevaOrdenPage() {
     () => (pedidos.data ? pedidos.data.bySupplier[supplierId ?? ''] ?? [] : []),
     [pedidos.data, supplierId]
   );
+
+  // Antes el "Precio unit." arrancaba siempre en blanco y había que teclearlo a mano en
+  // cada orden, aunque el producto ya tuviera compras anteriores. Se prellena con el
+  // último precio confirmado (price_history, cualquier proveedor) y queda editable —
+  // si el coordinador lo cambia, esa es la nueva estimación para esta orden.
+  useEffect(() => {
+    if (items.length === 0) return;
+    setPrices((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const item of items as any[]) {
+        if (next[item.product_id] === undefined && item.last_known_price != null) {
+          next[item.product_id] = Number(item.last_known_price);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [items]);
 
   function qtyFor(key: string, fallback: number) {
     return quantities[key] ?? fallback;
@@ -109,19 +130,33 @@ export default function NuevaOrdenPage() {
                   <p className="text-sm font-medium truncate">{item.product?.name}</p>
                   <p className="text-xs text-muted-foreground">Consolidado: {item.total_quantity} {item.unit?.code}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-start gap-2">
                   <QuantityInput
                     value={qtyFor(item.product_id, item.total_quantity)}
                     onChange={(v) => setQuantities((q) => ({ ...q, [item.product_id]: v }))}
                     unitCode={item.unit?.code}
                   />
-                  <Input
-                    type="number"
-                    placeholder="Precio unit."
-                    className="w-28"
-                    value={prices[item.product_id] ?? ''}
-                    onChange={(e) => setPrices((p) => ({ ...p, [item.product_id]: e.target.value ? Number(e.target.value) : undefined }))}
-                  />
+                  <div className="flex flex-col items-end gap-1">
+                    <Input
+                      type="number"
+                      placeholder="Precio unit."
+                      className="w-28"
+                      value={prices[item.product_id] ?? ''}
+                      onChange={(e) => setPrices((p) => ({ ...p, [item.product_id]: e.target.value ? Number(e.target.value) : undefined }))}
+                    />
+                    {item.last_known_price != null && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span>Última: {formatCurrencyCOP(Number(item.last_known_price))}</span>
+                        {prices[item.product_id] != null && (
+                          <DeviationBadge
+                            percent={((prices[item.product_id]! - Number(item.last_known_price)) / Number(item.last_known_price)) * 100}
+                            referenceLabel="último precio"
+                            threshold={1}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ))
