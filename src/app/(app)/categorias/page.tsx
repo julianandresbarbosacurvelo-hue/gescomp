@@ -22,8 +22,18 @@ export default function CategoriasPage() {
 
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['categories'], queryFn: () => listCategories() });
 
+  // createCategory/updateCategory devuelven { data } | { error } en vez de lanzar con
+  // `throw` — Next.js redacta en producción el mensaje de cualquier error lanzado desde
+  // un Server Action (el cliente solo ve "Server Components render error", genérico e
+  // inútil para el usuario). Al venir como dato, el mensaje llega intacto; acá se
+  // relanza como Error de JS normal para que react-query lo capture en onError y
+  // muestre el toast de siempre.
   const createMutation = useMutation({
-    mutationFn: () => createCategory({ name: newName, is_active: true }),
+    mutationFn: async () => {
+      const result = await createCategory({ name: newName, is_active: true });
+      if (result.error) throw new Error(result.error);
+      return result.data;
+    },
     onSuccess: () => {
       toast('Categoría creada');
       setNewName('');
@@ -38,7 +48,11 @@ export default function CategoriasPage() {
   // constraint en categories.name (Fase 6), así que un duplicado simplemente falla acá
   // con un mensaje claro en vez de crear un registro corrupto.
   const updateMutation = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => updateCategory(id, { name }),
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const result = await updateCategory(id, { name });
+      if (result.error) throw new Error(result.error);
+      return result.data;
+    },
     onSuccess: () => {
       toast('Categoría actualizada');
       setEditingId(null);
