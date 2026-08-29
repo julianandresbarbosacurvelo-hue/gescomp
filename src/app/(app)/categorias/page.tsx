@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Tags, PlusCircle } from 'lucide-react';
-import { listCategories, createCategory, deactivateCategory } from '@/lib/actions/categories';
+import { Tags, PlusCircle, Pencil, Check, X } from 'lucide-react';
+import { listCategories, createCategory, updateCategory, deactivateCategory } from '@/lib/actions/categories';
 import { useToast } from '@/lib/toast-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/business/EmptyState';
@@ -17,6 +17,8 @@ export default function CategoriasPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [newName, setNewName] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
 
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['categories'], queryFn: () => listCategories() });
 
@@ -30,11 +32,43 @@ export default function CategoriasPage() {
     onError: (e: Error) => toast(e.message || 'No pudimos crear la categoría.', 'error'),
   });
 
+  // Antes solo existía createCategory/deactivateCategory en la UI — updateCategory ya
+  // existía en el backend (categories.ts) pero nunca se exponía para renombrar, así que
+  // un nombre mal escrito o duplicado quedaba fijo para siempre. La BD ya tiene un unique
+  // constraint en categories.name (Fase 6), así que un duplicado simplemente falla acá
+  // con un mensaje claro en vez de crear un registro corrupto.
+  const updateMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => updateCategory(id, { name }),
+    onSuccess: () => {
+      toast('Categoría actualizada');
+      setEditingId(null);
+      setEditingName('');
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+    },
+    onError: (e: Error) => toast(e.message || 'No pudimos actualizar la categoría.', 'error'),
+  });
+
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => deactivateCategory(id),
     onSuccess: () => { toast('Categoría desactivada'); queryClient.invalidateQueries({ queryKey: ['categories'] }); },
     onError: (e: Error) => toast(e.message, 'error'),
   });
+
+  function startEditing(id: string, currentName: string) {
+    setEditingId(id);
+    setEditingName(currentName);
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+    setEditingName('');
+  }
+
+  function saveEditing(id: string) {
+    const trimmed = editingName.trim();
+    if (!trimmed) return;
+    updateMutation.mutate({ id, name: trimmed });
+  }
 
   return (
     <div className="space-y-4 max-w-lg">
@@ -60,15 +94,46 @@ export default function CategoriasPage() {
         <div className="rounded-lg border border-border overflow-hidden">
           {data.map((c) => (
             <div key={c.id} className="flex items-center justify-between px-4 py-3 border-b border-border last:border-0 bg-card">
-              <span className={cn('text-sm', !c.is_active && 'text-muted-foreground line-through')}>{c.name}</span>
-              <div className="flex items-center gap-2">
-                <Badge variant={c.is_active ? 'secondary' : 'outline'}>{c.is_active ? 'Activa' : 'Inactiva'}</Badge>
-                {c.is_active && (
-                  <button onClick={() => deactivateMutation.mutate(c.id)} className="text-xs text-muted-foreground hover:text-destructive">
-                    Desactivar
+              {editingId === c.id ? (
+                <div className="flex flex-1 items-center gap-2">
+                  <Input
+                    autoFocus
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveEditing(c.id);
+                      if (e.key === 'Escape') cancelEditing();
+                    }}
+                    className="h-8"
+                  />
+                  <button
+                    onClick={() => saveEditing(c.id)}
+                    disabled={updateMutation.isPending || !editingName.trim()}
+                    className="text-status-verde hover:opacity-80 disabled:opacity-40"
+                    aria-label="Guardar nombre"
+                  >
+                    <Check className="h-4 w-4" />
                   </button>
-                )}
-              </div>
+                  <button onClick={cancelEditing} className="text-muted-foreground hover:text-foreground" aria-label="Cancelar edición">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <span className={cn('text-sm', !c.is_active && 'text-muted-foreground line-through')}>{c.name}</span>
+              )}
+              {editingId !== c.id && (
+                <div className="flex items-center gap-2">
+                  <Badge variant={c.is_active ? 'secondary' : 'outline'}>{c.is_active ? 'Activa' : 'Inactiva'}</Badge>
+                  <button onClick={() => startEditing(c.id, c.name)} className="text-muted-foreground hover:text-primary" aria-label={`Editar ${c.name}`}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  {c.is_active && (
+                    <button onClick={() => deactivateMutation.mutate(c.id)} className="text-xs text-muted-foreground hover:text-destructive">
+                      Desactivar
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
