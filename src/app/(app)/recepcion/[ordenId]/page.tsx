@@ -35,6 +35,7 @@ export default function RecepcionDetallePage() {
           quantity_received: e.pending, // por defecto viene "todo llegó completo" — confirmar es el caso normal (sección 30)
           hasNovedad: false,
           showPriceInput: false,
+          agreed_unit_price: e.agreed_unit_price,
         }))
       );
     }
