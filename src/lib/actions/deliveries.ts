@@ -11,7 +11,7 @@ export async function getExpectedForOrder(purchaseOrderId: string) {
   const { data, error } = await supabase
     .from('purchase_order_items')
     .select(`
-      id, quantity, product_id, unit:units(code),
+      id, quantity, product_id, agreed_unit_price, unit:units(code),
       product:products(name),
       service_description,
       delivery_items(quantity_received)
@@ -30,6 +30,10 @@ export async function getExpectedForOrder(purchaseOrderId: string) {
       ordered: item.quantity,
       received_previously: receivedSoFar,
       pending: Math.max(0, Number(item.quantity) - receivedSoFar),
+      // Precio acordado en la orden — se usa para sugerir el precio de factura al recibir,
+      // en vez de dejarlo en blanco (ver ReceivingItem: solo aplica si el receptor abre
+      // "Registrar precio", nunca se envía sin que él lo confirme).
+      agreed_unit_price: item.agreed_unit_price ?? null,
     };
   });
 }
