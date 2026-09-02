@@ -6,6 +6,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { getPedidosPorProveedor, createPurchaseOrder } from '@/lib/actions/purchase-orders';
 import { getSupplierDetail } from '@/lib/actions/suppliers';
 import { useEstablishmentStore } from '@/lib/store/establishment';
+import { useSession } from '@/lib/session-context';
 import { useToast } from '@/lib/toast-context';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,6 +21,7 @@ export default function NuevaOrdenPage() {
   const router = useRouter();
   const supplierId = searchParams.get('supplier');
   const { activeEstablishmentId } = useEstablishmentStore();
+  const session = useSession();
   const { toast } = useToast();
 
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -27,6 +29,52 @@ export default function NuevaOrdenPage() {
   const [expectedDate, setExpectedDate] = useState('');
   const [deliveryPlace, setDeliveryPlace] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Mismo mecanismo de borrador que "Nuevo requerimiento" (ver draftKey en
+  // requerimientos/nuevo/page.tsx): las cantidades/precios que el coordinador de compras
+  // ajusta antes de emitir la orden tampoco deben perderse ante una caída de señal o un
+  // cierre accidental de la pestaña — se restauran al volver a esta pantalla y solo se
+  // limpian cuando la orden se genera con éxito.
+  const draftKey = activeEstablishmentId && supplierId
+    ? `gescomp:draft:orden:${session.userId}:${activeEstablishmentId}:${supplierId}`
+    : null;
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  useEffect(() => {
+    if (!draftKey || draftRestored) return;
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      if (raw) {
+        const draft = JSON.parse(raw) as {
+          quantities?: Record<string, number>; prices?: Record<string, number | undefined>;
+          expectedDate?: string; deliveryPlace?: string; notes?: string;
+        };
+        if (draft.quantities) setQuantities(draft.quantities);
+        if (draft.prices) setPrices(draft.prices);
+        if (draft.expectedDate) setExpectedDate(draft.expectedDate);
+        if (draft.deliveryPlace) setDeliveryPlace(draft.deliveryPlace);
+        if (draft.notes) setNotes(draft.notes);
+        if (draft.quantities || draft.prices) toast('Recuperamos los cambios sin guardar de esta orden');
+      }
+    } catch {
+      // localStorage puede fallar (modo privado, cuota llena) — no debe romper la pantalla
+    }
+    setDraftRestored(true);
+  }, [draftKey, draftRestored, toast]);
+
+  useEffect(() => {
+    if (!draftKey || !draftRestored) return;
+    try {
+      const hasContent = Object.keys(quantities).length > 0 || Object.keys(prices).length > 0 || expectedDate || deliveryPlace || notes;
+      if (!hasContent) {
+        window.localStorage.removeItem(draftKey);
+      } else {
+        window.localStorage.setItem(draftKey, JSON.stringify({ quantities, prices, expectedDate, deliveryPlace, notes }));
+      }
+    } catch {
+      // idem — persistir el borrador es una mejora, no algo que deba bloquear el flujo
+    }
+  }, [draftKey, draftRestored, quantities, prices, expectedDate, deliveryPlace, notes]);
 
   const pedidos = useQuery({
     queryKey: ['pedidos-proveedor', activeEstablishmentId],
@@ -98,6 +146,11 @@ export default function NuevaOrdenPage() {
       }),
     onSuccess: (orderId) => {
       toast('Orden generada y PDF listo para compartir');
+      // El borrador solo se limpia tras confirmar que la orden quedó guardada — igual que
+      // en "Nuevo requerimiento", nunca antes de tener éxito real.
+      if (draftKey) {
+        try { window.localStorage.removeItem(draftKey); } catch { /* no crítico */ }
+      }
       router.push(`/compras/ordenes/${orderId}`);
     },
     onError: (e: Error) => toast(e.message || 'No pudimos generar la orden. Intenta nuevamente.', 'error'),
@@ -173,7 +226,7 @@ export default function NuevaOrdenPage() {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1.5">Lugar de entrega</label>
-            <Input value={deliveryPlace} onChange={(e) => setDeliveryPlace(e.target.value)} placeholder="Ej. Sede Bogotá, andén de descargue" />
+            <Input value={deliveryPlace} onChange={(e) => setDeliveryPlace(e.target.value)} placeholder="Ej. andén de descargue" />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1.5">Observaciones</label>
