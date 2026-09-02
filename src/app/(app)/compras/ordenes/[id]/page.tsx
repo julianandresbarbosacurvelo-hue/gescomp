@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileDown, XCircle, Lock, AlertTriangle } from 'lucide-react';
-import { getPurchaseOrderDetail, getPurchaseOrderTimeline, closePurchaseOrder, cancelPurchaseOrder } from '@/lib/actions/purchase-orders';
+import { getPurchaseOrderDetail, getPurchaseOrderTimeline, closePurchaseOrder, cancelPurchaseOrder, regeneratePurchaseOrderPdf } from '@/lib/actions/purchase-orders';
 import { useSession } from '@/lib/session-context';
 import { getActiveRoleCodes } from '@/lib/session-utils';
 import { useEstablishmentStore } from '@/lib/store/establishment';
@@ -42,6 +42,15 @@ export default function OrderDetailPage() {
     onSuccess: () => { toast('Orden cancelada'); setShowCancelForm(false); queryClient.invalidateQueries({ queryKey: ['purchase-order', id] }); },
     onError: (e: Error) => toast(e.message, 'error'),
   });
+  const pdfMutation = useMutation({
+    mutationFn: async () => {
+      const result = await regeneratePurchaseOrderPdf(id);
+      if ('error' in result) throw new Error(result.error);
+      return result.data;
+    },
+    onSuccess: () => { toast('PDF generado'); queryClient.invalidateQueries({ queryKey: ['purchase-order', id] }); },
+    onError: (e: Error) => toast(e.message, 'error'),
+  });
 
   if (order.isLoading || !order.data) {
     return <div className="space-y-3"><Skeleton className="h-8 w-64" /><Skeleton className="h-40" /></div>;
@@ -64,7 +73,7 @@ export default function OrderDetailPage() {
         </div>
 
         {/* Documento formal — solo admin/coordinador (sección 38 del brief) */}
-        {o.pdf_attachment?.file_url && (
+        {o.pdf_attachment?.file_url ? (
           <a
             href={o.pdf_attachment.file_url}
             target="_blank"
@@ -73,7 +82,15 @@ export default function OrderDetailPage() {
           >
             <FileDown className="h-4 w-4" /> Ver orden formal (PDF)
           </a>
-        )}
+        ) : canManage ? (
+          <Button
+            variant="outline" size="sm"
+            disabled={pdfMutation.isPending}
+            onClick={() => pdfMutation.mutate()}
+          >
+            <FileDown className="h-4 w-4" /> {pdfMutation.isPending ? 'Generando PDF…' : 'Generar PDF'}
+          </Button>
+        ) : null}
       </div>
 
       <div className="grid md:grid-cols-3 gap-6">
