@@ -36,7 +36,9 @@ export default function ProductDetailPage() {
   const [internalCode, setInternalCode] = useState('');
 
   const product = useQuery({ queryKey: ['product', id], queryFn: () => getProduct(id) });
-  const categories = useQuery({ queryKey: ['categories'], queryFn: () => listCategories(), enabled: editing });
+  // includeInactive: true — si el producto quedó con una categoría que luego se
+  // desactivó, el select de edición necesita poder seguir mostrándola seleccionada.
+  const categories = useQuery({ queryKey: ['categories', 'all'], queryFn: () => listCategories({ includeInactive: true }), enabled: editing });
   const units = useQuery({ queryKey: ['units'], queryFn: () => listUnits(), enabled: editing });
 
   useEffect(() => {
