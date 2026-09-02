@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Tags, PlusCircle, Pencil, Check, X } from 'lucide-react';
-import { listCategories, createCategory, updateCategory, deactivateCategory } from '@/lib/actions/categories';
+import { Tags, PlusCircle, Pencil, Check, X, Trash2 } from 'lucide-react';
+import { listCategories, createCategory, updateCategory, deactivateCategory, deleteCategory, getCategoryProductCounts } from '@/lib/actions/categories';
 import { useToast } from '@/lib/toast-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/business/EmptyState';
@@ -20,7 +20,13 @@ export default function CategoriasPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['categories'], queryFn: () => listCategories() });
+  // includeInactive: true — esta pantalla es justamente donde se administran las
+  // inactivas (para reactivarlas... o, ahora, eliminarlas si ya no tienen productos).
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['categories', 'all'],
+    queryFn: () => listCategories({ includeInactive: true }),
+  });
+  const productCounts = useQuery({ queryKey: ['category-product-counts'], queryFn: () => getCategoryProductCounts() });
 
   // createCategory/updateCategory devuelven { data } | { error } en vez de lanzar con
   // `throw` — Next.js redacta en producción el mensaje de cualquier error lanzado desde
@@ -67,6 +73,29 @@ export default function CategoriasPage() {
     onSuccess: () => { toast('Categoría desactivada'); queryClient.invalidateQueries({ queryKey: ['categories'] }); },
     onError: (e: Error) => toast(e.message, 'error'),
   });
+
+  // Borrado físico — solo aplica a categorías ya inactivas y sin productos (el
+  // botón ni siquiera se muestra si no cumple eso). deleteCategory igual revalida
+  // del lado del servidor por si el conteo cambió justo antes de confirmar.
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const result = await deleteCategory(id);
+      if (result.error) throw new Error(result.error);
+      return result.data;
+    },
+    onSuccess: () => {
+      toast('Categoría eliminada');
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['category-product-counts'] });
+    },
+    onError: (e: Error) => toast(e.message || 'No pudimos eliminar la categoría.', 'error'),
+  });
+
+  function confirmDelete(id: string, name: string) {
+    if (window.confirm(`¿Eliminar la categoría "${name}"? Esta acción no se puede deshacer.`)) {
+      deleteMutation.mutate(id);
+    }
+  }
 
   function startEditing(id: string, currentName: string) {
     setEditingId(id);
@@ -144,6 +173,17 @@ export default function CategoriasPage() {
                   {c.is_active && (
                     <button onClick={() => deactivateMutation.mutate(c.id)} className="text-xs text-muted-foreground hover:text-destructive">
                       Desactivar
+                    </button>
+                  )}
+                  {!c.is_active && (productCounts.data?.[c.id] ?? 0) === 0 && (
+                    <button
+                      onClick={() => confirmDelete(c.id, c.name)}
+                      disabled={deleteMutation.isPending}
+                      className="text-muted-foreground hover:text-destructive disabled:opacity-40"
+                      aria-label={`Eliminar ${c.name}`}
+                      title="Eliminar (sin productos asociados)"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>
