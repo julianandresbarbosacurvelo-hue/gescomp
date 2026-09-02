@@ -190,6 +190,19 @@ export async function generateAndAttachOrderPdf(orderId: string) {
   return attachment.file_url as string;
 }
 
+// Envuelve generateAndAttachOrderPdf con el patrón {data}|{error} para poder llamarla
+// manualmente desde "Detalle de Orden" (botón "Generar PDF") cuando la generación
+// automática al crear la orden falló silenciosamente — antes ese fallo solo quedaba en
+// console.error del servidor y no había ninguna forma de reintentarlo ni de ver el motivo.
+export async function regeneratePurchaseOrderPdf(orderId: string) {
+  try {
+    const fileUrl = await generateAndAttachOrderPdf(orderId);
+    return { data: fileUrl };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Error desconocido al generar el PDF.' };
+  }
+}
+
 export async function listPurchaseOrders(establishmentId: string) {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
