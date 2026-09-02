@@ -20,7 +20,10 @@ export function AnalyticsFilterBar({ establishmentId }: { establishmentId: strin
   const searchParams = useSearchParams();
 
   const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: () => listSuppliers() });
-  const categories = useQuery({ queryKey: ['categories'], queryFn: () => listCategories() });
+  // includeInactive: true — los reportes son históricos, así que hay que poder
+  // filtrar también por una categoría ya desactivada (pedidos/compras pasadas
+  // siguen referenciando productos de esa categoría).
+  const categories = useQuery({ queryKey: ['categories', 'all'], queryFn: () => listCategories({ includeInactive: true }) });
   const products = useQuery({ queryKey: ['products'], queryFn: () => listProducts({ activeOnly: true }) });
   const areas = useQuery({ queryKey: ['areas', establishmentId], queryFn: () => listAreas(establishmentId), enabled: !!establishmentId });
 
