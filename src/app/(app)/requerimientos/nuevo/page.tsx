@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, PackagePlus, ShoppingCart } from 'lucide-react';
 import { listCategories } from '@/lib/actions/categories';
@@ -37,6 +37,47 @@ export default function NewRequisitionPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [requiredDate, setRequiredDate] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Borrador persistido en localStorage — si se cae la señal o el usuario cierra la
+  // pestaña por accidente a medio armar un carrito, no debe perder lo que ya cargó.
+  // Se guarda por usuario + establecimiento (un dispositivo puede compartirse entre
+  // varios usuarios del área) y se limpia solo cuando el envío se confirma con éxito.
+  const draftKey = establishmentId ? `gescomp:draft:requisicion:${session.userId}:${establishmentId}` : null;
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  useEffect(() => {
+    if (!draftKey || draftRestored) return;
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      if (raw) {
+        const draft = JSON.parse(raw) as { cart?: CartItem[]; requiredDate?: string; notes?: string };
+        if (Array.isArray(draft.cart) && draft.cart.length > 0) {
+          setCart(draft.cart);
+          if (draft.requiredDate) setRequiredDate(draft.requiredDate);
+          if (draft.notes) setNotes(draft.notes);
+          toast('Recuperamos el carrito que tenías sin enviar');
+        }
+      }
+    } catch {
+      // localStorage puede fallar (modo privado, cuota llena) — no debe romper la pantalla
+    }
+    setDraftRestored(true);
+  }, [draftKey, draftRestored, toast]);
+
+  useEffect(() => {
+    // Espera a que termine la restauración de arriba: si guardara antes, el carrito
+    // vacío inicial sobrescribiría el borrador guardado antes de poder leerlo.
+    if (!draftKey || !draftRestored) return;
+    try {
+      if (cart.length === 0) {
+        window.localStorage.removeItem(draftKey);
+      } else {
+        window.localStorage.setItem(draftKey, JSON.stringify({ cart, requiredDate, notes }));
+      }
+    } catch {
+      // idem — persistir el borrador es una mejora, no algo que deba bloquear el flujo
+    }
+  }, [draftKey, draftRestored, cart, requiredDate, notes]);
 
   const area = useQuery({
     queryKey: ['my-area', establishmentId, roleCode],
@@ -75,8 +116,8 @@ export default function NewRequisitionPage() {
   }
 
   const submitMutation = useMutation({
-    mutationFn: () =>
-      createRequisition({
+    mutationFn: async () => {
+      const result = await createRequisition({
         establishment_id: establishmentId,
         area_id: area.data!.id,
         required_date: requiredDate || undefined,
@@ -86,7 +127,10 @@ export default function NewRequisitionPage() {
             ? { product_id: i.product_id, quantity: i.quantity, unit_id: i.unit_id, priority: i.priority }
             : { unregistered_product_name: i.unregistered_product_name!, quantity: i.quantity, unit_id: i.unit_id }
         ) as any,
-      }),
+      });
+      if (result.error) throw new Error(result.error);
+      return result.data;
+    },
     onSuccess: () => {
       toast('Requerimiento enviado');
       setCart([]); setNotes(''); setRequiredDate(''); setCartOpen(false);
