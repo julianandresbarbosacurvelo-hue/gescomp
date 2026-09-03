@@ -3,9 +3,24 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { invoiceSchema, reconciliationSchema, type InvoiceInput, type ReconciliationInput } from '@/lib/validators/invoice';
 import { revalidatePath } from 'next/cache';
+import { ZodError } from 'zod';
 
 export async function createInvoice(input: InvoiceInput) {
-  const parsed = invoiceSchema.parse(input);
+  // Antes, un InvoiceInput que no cumplía el schema (p.ej. reglas de invoiceItemSchema)
+  // lanzaba un ZodError sin capturar dentro de esta Server Action — eso cruza al cliente
+  // como un error genérico de Server Components ("An error occurred in the Server
+  // Components render..."), sin ningún mensaje explicable para el usuario. Se captura y
+  // se convierte en un Error con mensaje legible, igual que ya se hace abajo con los
+  // errores de la RPC.
+  let parsed: InvoiceInput;
+  try {
+    parsed = invoiceSchema.parse(input);
+  } catch (e) {
+    if (e instanceof ZodError) {
+      throw new Error(e.issues.map((i) => i.message).join(' '));
+    }
+    throw e;
+  }
   const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase.rpc('create_invoice_with_items', {
