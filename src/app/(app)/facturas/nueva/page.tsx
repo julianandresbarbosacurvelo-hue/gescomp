@@ -49,11 +49,18 @@ export default function NuevaFacturaPage() {
         supplier_id: (orderDetail.data as any).supplier_id,
         invoice_number: invoiceNumber,
         invoice_date: invoiceDate,
-        items: (orderDetail.data as any).purchase_order_items.map((item: any) => ({
-          purchase_order_item_id: item.id,
-          quantity_invoiced: quantities[item.id] ?? item.quantity,
-          unit_price_invoiced: prices[item.id] ?? item.agreed_unit_price ?? 0,
-        })),
+        items: (orderDetail.data as any).purchase_order_items.map((item: any) => {
+          const qty = quantities[item.id] ?? item.quantity;
+          // Si la cantidad facturada es 0 (el proveedor no cobró/no entregó este ítem),
+          // el precio también debe quedar en 0 — el schema (ver invoiceSchema) exige que
+          // ambos campos sean 0 juntos o mayores a 0 juntos. Sin esto, un ítem con cantidad
+          // 0 pero con `agreed_unit_price` heredado de la orden rompía esa regla.
+          return {
+            purchase_order_item_id: item.id,
+            quantity_invoiced: qty,
+            unit_price_invoiced: qty === 0 ? 0 : (prices[item.id] ?? item.agreed_unit_price ?? 0),
+          };
+        }),
       });
       if (file) await uploadInvoiceFile(invoiceId, file);
       return invoiceId;
