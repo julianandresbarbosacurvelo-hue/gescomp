@@ -33,7 +33,15 @@ export default function NuevaFacturaPage() {
     queryFn: () => listPurchaseOrders(activeEstablishmentId!),
     enabled: !!activeEstablishmentId,
   });
-  const eligibleOrders = useMemo(() => orders.data?.filter((o: any) => RECEIVED_STATUSES.includes(o.status)) ?? [], [orders.data]);
+  // Además del estado de recepción, se excluye toda orden que ya tenga una factura
+  // registrada (una orden admite una sola — ver migración 0034) — antes seguía
+  // apareciendo aquí indefinidamente porque registrar la factura no cambia el estado
+  // de la orden (solo la conciliación lo hace), permitiendo generar una segunda
+  // factura duplicada para el mismo pedido.
+  const eligibleOrders = useMemo(
+    () => orders.data?.filter((o: any) => RECEIVED_STATUSES.includes(o.status) && (!o.invoices || o.invoices.length === 0)) ?? [],
+    [orders.data]
+  );
 
   const orderDetail = useQuery({
     queryKey: ['purchase-order', orderId],
