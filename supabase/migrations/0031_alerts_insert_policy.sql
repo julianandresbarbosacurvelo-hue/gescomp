@@ -1,0 +1,60 @@
+-- ============================================================
+-- GESCOMP — Migración 0031: falta política de INSERT en `alerts`
+-- rompe silenciosamente crear requerimientos/órdenes/facturas
+-- cuando se detecta una anomalía (cantidad, frecuencia, proveedor, precio)
+-- ============================================================
+--
+-- REPORTE: Jose Tique (rol cocina, Restaurante Cielo y Sazón) al enviar
+-- un requerimiento recibió "new row violates row-level security policy
+-- for table 'alerts'".
+--
+-- ANTES: la tabla `alerts` se creó en la 0001 y desde la 0002 solo tuvo
+-- política de SELECT (alerts_select, is_admin_or_buyer) y desde la 0011
+-- de UPDATE (alerts_update, is_admin_or_buyer) — NUNCA existió una
+-- política de INSERT, para ningún rol, ni siquiera admin. Mientras
+-- todas las funciones que insertan en `alerts` corrieran como
+-- `security definer` esto no se notaba (bypass de RLS por privilegio de
+-- función), pero `create_requisition_with_items` (0011/0024),
+-- `create_purchase_order_with_items` (0011/0025) y
+-- `create_invoice_with_items`/`reconcile_invoice` (0008) son todas
+-- `security invoker` — corren con los privilegios del usuario que llama
+-- (cocina/bar/servicio o coordinador_compras/admin, según el caso), así
+-- que en cuanto alguna de ellas intenta un `insert into alerts` para
+-- registrar una anomalía real (cantidad muy superior al promedio,
+-- pedido repetido antes de lo habitual, proveedor distinto al habitual,
+-- diferencia en factura), Postgres lo rechaza — sin política de INSERT,
+-- RLS deniega por defecto a cualquiera.
+--
+-- Esto explica por qué el bug es intermitente y nunca se había visto:
+-- solo se dispara cuando el pedido en cuestión es realmente anómalo
+-- (ver condiciones exactas en 0011/0024/0025), no en un envío normal.
+-- El caso de Jose Tique: algún ítem de su requerimiento tenía una
+-- cantidad >50% superior al promedio histórico de ese producto en ese
+-- establecimiento (condición de `cantidad_anormal` en
+-- create_requisition_with_items), o se repitió antes de lo habitual
+-- (`frecuencia_anormal`) — cualquiera de las dos dispara el insert que
+-- fallaba.
+--
+-- CAMBIO: se agrega alerts_insert, permitiendo insertar a cualquier
+-- usuario con un rol activo en ese establecimiento (has_any_role) —
+-- estas alertas siempre se generan como efecto secundario automático de
+-- una acción legítima del propio usuario (crear su requerimiento/orden/
+-- factura), nunca las escribe directamente desde el cliente, así que no
+-- hay riesgo adicional en permitir el insert a cualquier rol activo, tal
+-- como ya se hace para price_history_insert_recepcion y deliveries_insert.
+--
+-- IMPACTO: no cambia el SELECT ni el UPDATE (siguen solo para
+-- admin/coordinador_compras — un área no puede ver ni resolver alertas,
+-- solo dispara su creación indirectamente). Corrige de raíz el envío de
+-- requerimientos, la generación de órdenes de compra y la conciliación
+-- de facturas cada vez que se detecta cualquiera de las 7 anomalías,
+-- para cualquier rol.
+--
+-- PRUEBA: reintentar el envío del requerimiento de Jose Tique (mismo
+-- producto/cantidad) → debe guardarse sin error. Generar una orden de
+-- compra eligiendo un proveedor distinto al habitual de un producto →
+-- no debe fallar. Registrar un precio con variación >5% vs. el
+-- promedio de 90 días → tampoco debe fallar (trigger de price_history).
+
+create policy alerts_insert on alerts for insert
+  with check (has_any_role(establishment_id));
