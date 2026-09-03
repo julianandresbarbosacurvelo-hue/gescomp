@@ -205,9 +205,14 @@ export async function regeneratePurchaseOrderPdf(orderId: string) {
 
 export async function listPurchaseOrders(establishmentId: string) {
   const supabase = await createServerSupabaseClient();
+  // Se embebe `invoices(id)` (sin filtrar campos, solo para saber si ya existe alguna)
+  // porque "Registrar factura" (facturas/nueva) necesita excluir del selector las
+  // órdenes que ya tienen factura — cada orden admite una sola (ver migración 0034).
+  // No afecta a los demás usos de este listado (Órdenes, Recepción, Reportes): es un
+  // campo adicional que simplemente ignoran.
   const { data, error } = await supabase
     .from('purchase_orders')
-    .select('id, code, status, type, total, expected_delivery_date, created_at, supplier:suppliers(trade_name)')
+    .select('id, code, status, type, total, expected_delivery_date, created_at, supplier:suppliers(trade_name), invoices(id)')
     .eq('establishment_id', establishmentId)
     .order('created_at', { ascending: false });
 
