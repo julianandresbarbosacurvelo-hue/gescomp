@@ -16,7 +16,12 @@ export function ProductCard({
       )}
     >
       <div className="min-w-0">
-        <p className="text-sm font-medium truncate">{name}</p>
+        {/* Antes usaba `truncate` (una sola línea + "...") — con nombres largos de
+            producto (ej. "Queso Tajado Quesillo Doble Crema x 500gr") el usuario no
+            podía leer qué estaba agregando ni distinguirlo de otro similar. Se
+            reemplaza por `break-words` para que el nombre haga wrap a varias líneas
+            y siempre se lea completo, en vez de cortarse. */}
+        <p className="text-sm font-medium break-words">{name}</p>
         {unitCode && <p className="text-xs text-muted-foreground">Unidad: {unitCode}</p>}
       </div>
       <span

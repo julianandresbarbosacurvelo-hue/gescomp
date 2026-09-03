@@ -28,7 +28,11 @@ export function CartDrawer({
             {items.map((item) => (
               <div key={item.key} className="flex items-center gap-3 rounded-lg border border-border p-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{item.name}</p>
+                  {/* Mismo caso que ProductCard: con `truncate` un nombre largo se
+                      cortaba justo en el paso final antes de enviar el requerimiento
+                      — el usuario no podía confirmar qué estaba pidiendo. `break-words`
+                      deja que el nombre haga wrap en vez de cortarse. */}
+                  <p className="text-sm font-medium break-words">{item.name}</p>
                   <label className="sr-only" htmlFor={`priority-${item.key}`}>Prioridad de {item.name}</label>
                   <select
                     id={`priority-${item.key}`}
