@@ -102,8 +102,9 @@ export default function NuevaOrdenPage() {
       let changed = false;
       const next = { ...prev };
       for (const item of items as any[]) {
-        if (next[item.product_id] === undefined && item.last_known_price != null) {
-          next[item.product_id] = Number(item.last_known_price);
+        const key = itemKey(item);
+        if (next[key] === undefined && item.last_known_price != null) {
+          next[key] = Number(item.last_known_price);
           changed = true;
         }
       }
@@ -115,16 +116,26 @@ export default function NuevaOrdenPage() {
     return quantities[key] ?? fallback;
   }
 
+  // Cuando un producto quedó consolidado en dos unidades a la vez (ej. Novillano: "Carne
+  // Para Asar 150 gm" con ítems viejos en kg y nuevos en und), `v_consolidated_requisition_items`
+  // trae DOS filas para el mismo product_id. Antes se usaba `item.product_id` a secas como
+  // llave de estado (`quantities`/`prices`) y como `key` de la lista — las dos filas
+  // compartían la misma casilla y editar una pisaba la otra en silencio. La llave compuesta
+  // producto+unidad separa cada fila de verdad.
+  function itemKey(item: any) {
+    return `${item.product_id ?? item.unregistered_product_name}:${item.unit_id}`;
+  }
+
   const subtotal = items.reduce((sum: number, item: any) => {
-    const key = item.product_id;
+    const key = itemKey(item);
     const qty = qtyFor(key, item.total_quantity);
     const price = prices[key] ?? 0;
     return sum + qty * price;
   }, 0);
 
   const submitMutation = useMutation({
-    mutationFn: () =>
-      createPurchaseOrder({
+    mutationFn: async () => {
+      const result = await createPurchaseOrder({
         establishment_id: activeEstablishmentId!,
         supplier_id: supplierId!,
         type: 'producto',
@@ -133,9 +144,9 @@ export default function NuevaOrdenPage() {
         notes: notes || undefined,
         items: items.map((item: any) => ({
           product_id: item.product_id,
-          quantity: qtyFor(item.product_id, item.total_quantity),
+          quantity: qtyFor(itemKey(item), item.total_quantity),
           unit_id: item.unit_id,
-          agreed_unit_price: prices[item.product_id],
+          agreed_unit_price: prices[itemKey(item)],
           // Trazabilidad hacia los requerimientos originales — se conserva el reparto
           // por área tal como quedó consolidado (ver Fase 10 del backend).
           sources: (item.breakdown_by_area ?? []).map((a: any) => ({
@@ -143,15 +154,22 @@ export default function NuevaOrdenPage() {
             quantity_allocated: a.quantity,
           })),
         })),
-      }),
-    onSuccess: (orderId) => {
+      });
+      if (result.error) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: (result) => {
       toast('Orden generada y PDF listo para compartir');
+      // Algunos ítems pueden haber quedado afuera por conflicto de unidad (ver
+      // createPurchaseOrder) — la orden igual se genera con el resto, pero hay que avisar
+      // cuáles quedaron pendientes en vez de que desaparezcan sin explicación.
+      if (result.warning) toast(result.warning, 'error');
       // El borrador solo se limpia tras confirmar que la orden quedó guardada — igual que
       // en "Nuevo requerimiento", nunca antes de tener éxito real.
       if (draftKey) {
         try { window.localStorage.removeItem(draftKey); } catch { /* no crítico */ }
       }
-      router.push(`/compras/ordenes/${orderId}`);
+      router.push(`/compras/ordenes/${result.data}`);
     },
     onError: (e: Error) => toast(e.message || 'No pudimos generar la orden. Intenta nuevamente.', 'error'),
   });
@@ -177,42 +195,45 @@ export default function NuevaOrdenPage() {
           ) : items.length === 0 ? (
             <p className="text-sm text-muted-foreground">No hay ítems consolidados pendientes para este proveedor.</p>
           ) : (
-            items.map((item: any) => (
-              <div key={item.product_id} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 border-b border-border pb-3 last:border-0">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{item.product?.name}</p>
-                  <p className="text-xs text-muted-foreground">Consolidado: {item.total_quantity} {item.unit?.code}</p>
-                </div>
-                <div className="flex items-start gap-2">
-                  <QuantityInput
-                    value={qtyFor(item.product_id, item.total_quantity)}
-                    onChange={(v) => setQuantities((q) => ({ ...q, [item.product_id]: v }))}
-                    unitCode={item.unit?.code}
-                  />
-                  <div className="flex flex-col items-end gap-1">
-                    <Input
-                      type="number"
-                      placeholder="Precio unit."
-                      className="w-28"
-                      value={prices[item.product_id] ?? ''}
-                      onChange={(e) => setPrices((p) => ({ ...p, [item.product_id]: e.target.value ? Number(e.target.value) : undefined }))}
+            items.map((item: any) => {
+              const key = itemKey(item);
+              return (
+                <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 border-b border-border pb-3 last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{item.product?.name}</p>
+                    <p className="text-xs text-muted-foreground">Consolidado: {item.total_quantity} {item.unit?.code}</p>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <QuantityInput
+                      value={qtyFor(key, item.total_quantity)}
+                      onChange={(v) => setQuantities((q) => ({ ...q, [key]: v }))}
+                      unitCode={item.unit?.code}
                     />
-                    {item.last_known_price != null && (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <span>Última: {formatCurrencyCOP(Number(item.last_known_price))}</span>
-                        {prices[item.product_id] != null && (
-                          <DeviationBadge
-                            percent={((prices[item.product_id]! - Number(item.last_known_price)) / Number(item.last_known_price)) * 100}
-                            referenceLabel="último precio"
-                            threshold={1}
-                          />
-                        )}
-                      </div>
-                    )}
+                    <div className="flex flex-col items-end gap-1">
+                      <Input
+                        type="number"
+                        placeholder="Precio unit."
+                        className="w-28"
+                        value={prices[key] ?? ''}
+                        onChange={(e) => setPrices((p) => ({ ...p, [key]: e.target.value ? Number(e.target.value) : undefined }))}
+                      />
+                      {item.last_known_price != null && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <span>Última: {formatCurrencyCOP(Number(item.last_known_price))}</span>
+                          {prices[key] != null && (
+                            <DeviationBadge
+                              percent={((prices[key]! - Number(item.last_known_price)) / Number(item.last_known_price)) * 100}
+                              referenceLabel="último precio"
+                              threshold={1}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </CardContent>
       </Card>
