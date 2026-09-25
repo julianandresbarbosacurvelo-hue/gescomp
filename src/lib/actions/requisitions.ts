@@ -85,3 +85,37 @@ export async function getConsolidatedRequisitionItems(establishmentId: string) {
   if (error) throw new Error(error.message);
   return data;
 }
+
+// Botón "Anular ítem" en Detalle de Requerimiento (admin/coordinador_compras) — para
+// cuando un ítem puntual ya no aplica (ej. se canceló el evento para el que era, o
+// cambió la reserva) sin tener que anular todo el requerimiento. RLS
+// (requisition_items_buyer_update, migración 0002) ya exige admin/coordinador_compras;
+// la función además valida que el requerimiento siga 'enviado' (migración 0035).
+export async function cancelRequisitionItem(requisitionItemId: string, reason: string) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc('cancel_requisition_item', {
+    p_requisition_item_id: requisitionItemId,
+    p_reason: reason,
+  });
+  if (error) return { error: error.message };
+  revalidatePath('/compras/bandeja');
+  revalidatePath('/compras/pedidos-proveedor');
+  return { data: true };
+}
+
+// Botón "Anular requerimiento" en Detalle de Requerimiento (admin/coordinador_compras)
+// — para cuando TODO el requerimiento ya no aplica (evento cancelado, cierre temporal
+// del establecimiento, etc.), no solo un ítem. Mismo patrón que cancelPurchaseOrder.
+export async function cancelRequisition(requisitionId: string, reason: string) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc('cancel_requisition', {
+    p_requisition_id: requisitionId,
+    p_reason: reason,
+  });
+  if (error) return { error: error.message };
+  revalidatePath('/compras/bandeja');
+  revalidatePath('/compras/pedidos-proveedor');
+  revalidatePath('/requerimientos/mis-requerimientos');
+  revalidatePath(`/requerimientos/${requisitionId}`);
+  return { data: true };
+}

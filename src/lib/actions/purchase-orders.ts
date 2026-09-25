@@ -81,23 +81,71 @@ export async function getPedidosPorProveedor(establishmentId: string) {
 }
 
 // Pantalla "Detalle de Orden" tras generarla / "Generar Orden de Compra"
+//
+// Devuelve { data, warning? } | { error } en vez de lanzar con `throw` — mismo motivo que
+// createRequisition (ver comentario ahí): cualquier error lanzado desde un Server Action
+// llega al cliente redactado como "An error occurred in the Server Components render...".
+// Antes esta función SÍ lanzaba (tanto en `purchaseOrderSchema.parse` como en el error del
+// RPC), y fue justo lo que le pasó al proveedor Novillano el 2026-09-24: 6 ítems de
+// requerimientos viejos quedaron pedidos en una unidad (kg) que ya no coincide con la
+// unidad de compra vigente del producto (und) — el trigger `trg_validate_unit_matches_product`
+// rechaza el insert con un mensaje claro en español, pero como create_purchase_order_with_items
+// hace todo en una sola transacción, ESE único ítem hacía fallar la orden COMPLETA, y el
+// `throw` de acá arriba convertía ese mensaje claro en el error genérico que vio el usuario.
 export async function createPurchaseOrder(input: PurchaseOrderInput) {
-  const parsed = purchaseOrderSchema.parse(input);
+  const parsed = purchaseOrderSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Revisa los datos de la orden.' };
+  }
   const supabase = await createServerSupabaseClient();
 
+  // GUARDIA DE UNIDAD: se valida acá, ANTES de llamar al RPC, que la unidad de cada ítem
+  // coincida con la unidad de compra vigente del producto en el catálogo — la misma regla
+  // que ya exige el trigger de la base de datos, pero validada acá para poder (a) identificar
+  // exactamente qué producto tiene el conflicto y (b) excluirlo en vez de dejar que tumbe
+  // toda la orden. Los ítems sin `product_id` (servicios/no registrados) no tienen unidad de
+  // catálogo contra la cual comparar y se dejan pasar sin tocar.
+  const productIds = Array.from(new Set(parsed.data.items.map((i) => i.product_id).filter(Boolean))) as string[];
+  const excludedProductNames: string[] = [];
+  let itemsToSend = parsed.data.items;
+
+  if (productIds.length > 0) {
+    const { data: products, error: productsError } = await supabase
+      .from('products')
+      .select('id, name, unit_id')
+      .in('id', productIds);
+    if (productsError) return { error: productsError.message };
+
+    const productMap = new Map((products ?? []).map((p) => [p.id, p]));
+    itemsToSend = parsed.data.items.filter((item) => {
+      const product = item.product_id ? productMap.get(item.product_id) : null;
+      if (product && product.unit_id !== item.unit_id) {
+        excludedProductNames.push(product.name);
+        return false;
+      }
+      return true;
+    });
+  }
+
+  if (itemsToSend.length === 0) {
+    return {
+      error: `No se pudo generar la orden: la unidad de estos productos ya no coincide con la unidad de compra definida en el catálogo (${excludedProductNames.join(', ')}). Pide a un administrador que revise el producto antes de reintentar.`,
+    };
+  }
+
   const { data, error } = await supabase.rpc('create_purchase_order_with_items', {
-    p_establishment_id: parsed.establishment_id,
-    p_supplier_id: parsed.supplier_id,
-    p_type: parsed.type,
-    p_expected_delivery_date: parsed.expected_delivery_date ?? null,
-    p_delivery_place: parsed.delivery_place ?? null,
-    p_notes: parsed.notes ?? null,
-    p_items: parsed.items,
+    p_establishment_id: parsed.data.establishment_id,
+    p_supplier_id: parsed.data.supplier_id,
+    p_type: parsed.data.type,
+    p_expected_delivery_date: parsed.data.expected_delivery_date ?? null,
+    p_delivery_place: parsed.data.delivery_place ?? null,
+    p_notes: parsed.data.notes ?? null,
+    p_items: itemsToSend,
   });
 
   // RLS de purchase_orders (Fase 7) exige admin/coordinador_compras — si un rol de área
   // llega aquí por error de UI, la función falla y no se genera ninguna orden.
-  if (error) throw new Error(error.message);
+  if (error) return { error: error.message };
 
   revalidatePath('/compras/bandeja');
   revalidatePath('/compras/ordenes');
@@ -114,7 +162,12 @@ export async function createPurchaseOrder(input: PurchaseOrderInput) {
     console.error('No se pudo generar el PDF de la orden:', pdfError);
   }
 
-  return orderId;
+  return {
+    data: orderId,
+    warning: excludedProductNames.length > 0
+      ? `La orden se generó, pero quedaron afuera estos productos por conflicto de unidad: ${excludedProductNames.join(', ')}. Pide a un administrador que los revise para poder pedirlos.`
+      : undefined,
+  };
 }
 
 // Genera el PDF de una orden existente, lo sube a Storage y lo adjunta.
