@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, ChevronDown, Download, Building2 } from 'lucide-react';
+import { Search, ChevronDown, Download, Building2, ExternalLink } from 'lucide-react';
 import { getConsolidatedRequisitionItems } from '@/lib/actions/requisitions';
 import { useEstablishmentStore } from '@/lib/store/establishment';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -14,7 +14,10 @@ import { exportToCsv } from '@/lib/export';
 import { cn } from '@/lib/utils';
 import { Inbox } from 'lucide-react';
 
-type AreaBreakdown = { area_code: string; area_name: string; quantity: number; priority: string | null };
+type AreaBreakdown = {
+  area_code: string; area_name: string; quantity: number; priority: string | null;
+  requisition_id: string; requisition_item_id: string;
+};
 
 export default function BandejaCompras() {
   const { activeEstablishmentId } = useEstablishmentStore();
@@ -118,7 +121,23 @@ export default function BandejaCompras() {
                     {areas.map((a, i) => (
                       <div key={i} className="flex items-center justify-between py-1 text-sm">
                         <span className="text-muted-foreground">{a.area_name}</span>
-                        <span className="tabular-nums">{a.quantity} {item.unit?.code}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="tabular-nums">{a.quantity} {item.unit?.code}</span>
+                          {/* Lleva al detalle del requerimiento completo (no solo este producto) —
+                              ahí se puede anular el ítem puntual o todo el requerimiento con un
+                              motivo si ya no aplica (ej. se canceló el evento/reserva). Se anula
+                              desde el detalle completo a propósito: un requerimiento mezcla
+                              productos de varios proveedores, y desde acá solo se ve uno. */}
+                          {a.requisition_id && (
+                            <a
+                              href={`/requerimientos/${a.requisition_id}`}
+                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                              title="Ver el requerimiento completo (para anular ítems o todo el requerimiento)"
+                            >
+                              Ver requerimiento <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
