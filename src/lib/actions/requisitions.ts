@@ -119,3 +119,24 @@ export async function cancelRequisition(requisitionId: string, reason: string) {
   revalidatePath(`/requerimientos/${requisitionId}`);
   return { data: true };
 }
+
+// Botones "Anular"/"Anular todo este pedido" en "Nueva orden" (Pedidos por Proveedor) —
+// a diferencia de cancelRequisitionItem, acá un producto consolidado casi nunca es UN
+// solo ítem: es la suma de varios requisition_item de varios requerimientos (a veces de
+// varias áreas) que pidieron lo mismo (ver breakdown_by_area, migración 0033). Por eso
+// se anula por lote: la función `cancel_requisition_items_batch` (migración 0036)
+// reutiliza `cancel_requisition_item` para cada id, y todo corre en una sola transacción
+// — si cualquier ítem de la lista no se puede anular, no se anula NADA de la lista.
+export async function cancelRequisitionItemsBatch(requisitionItemIds: string[], reason: string) {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc('cancel_requisition_items_batch', {
+    p_requisition_item_ids: requisitionItemIds,
+    p_reason: reason,
+  });
+  if (error) return { error: error.message };
+  revalidatePath('/compras/bandeja');
+  revalidatePath('/compras/pedidos-proveedor');
+  revalidatePath('/compras/ordenes/nueva');
+  revalidatePath('/requerimientos/mis-requerimientos');
+  return { data: true };
+}
